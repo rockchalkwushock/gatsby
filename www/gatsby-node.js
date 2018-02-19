@@ -9,12 +9,17 @@ const slugify = require(`limax`)
 // convert a string like `/some/long/path/name-of-docs/` to `name-of-docs`
 const slugToAnchor = slug =>
   slug
-    .split(`/`) // split on dir separators
-    .filter(item => item !== ``) // remove empty values
-    .pop() // take last item
+  .split(`/`) // split on dir separators
+  .filter(item => item !== ``) // remove empty values
+  .pop() // take last item
 
-exports.createPages = ({ graphql, boundActionCreators }) => {
-  const { createPage } = boundActionCreators
+exports.createPages = ({
+  graphql,
+  boundActionCreators
+}) => {
+  const {
+    createPage
+  } = boundActionCreators
   return new Promise((resolve, reject) => {
     const docsTemplate = path.resolve(`src/templates/template-docs-markdown.js`)
     const blogPostTemplate = path.resolve(`src/templates/template-blog-post.js`)
@@ -129,9 +134,19 @@ exports.createPages = ({ graphql, boundActionCreators }) => {
   })
 }
 
+// Helper function
+// Will need to expand this to the other sources.
+const isMemberOf = str => str === `api-node-docs`
+
 // Create slugs for files.
-exports.onCreateNode = ({ node, boundActionCreators, getNode }) => {
-  const { createNodeField } = boundActionCreators
+exports.onCreateNode = ({
+  node,
+  boundActionCreators,
+  getNode
+}) => {
+  const {
+    createNodeField
+  } = boundActionCreators
   let slug
   if (node.internal.type === `File`) {
     const parsedFilePath = parseFilepath(node.relativePath)
@@ -145,7 +160,11 @@ exports.onCreateNode = ({ node, boundActionCreators, getNode }) => {
       }
     }
     if (slug) {
-      createNodeField({ node, name: `slug`, value: slug })
+      createNodeField({
+        node,
+        name: `slug`,
+        value: slug
+      })
     }
   } else if (
     node.internal.type === `MarkdownRemark` &&
@@ -174,15 +193,79 @@ exports.onCreateNode = ({ node, boundActionCreators, getNode }) => {
         name: `title`,
         value: parsedFilePath.dir,
       })
-      createNodeField({ node, name: `package`, value: true })
+      createNodeField({
+        node,
+        name: `package`,
+        value: true
+      })
     }
     if (slug) {
-      createNodeField({ node, name: `anchor`, value: slugToAnchor(slug) })
-      createNodeField({ node, name: `slug`, value: slug })
+      createNodeField({
+        node,
+        name: `anchor`,
+        value: slugToAnchor(slug)
+      })
+      createNodeField({
+        node,
+        name: `slug`,
+        value: slug
+      })
     }
   } else if (node.internal.type === `AuthorYaml`) {
     slug = `/contributors/${slugify(node.id)}/`
-    createNodeField({ node, name: `slug`, value: slug })
+    createNodeField({
+      node,
+      name: `slug`,
+      value: slug
+    })
+    // ##################
+    // Code for adding the line number back as a node.
+    // Can pull this code out somewhere in `/www` to keep
+    // `gatsby-node` cleaner.
+    // ##################
+  } else if (
+    node.internal.type === `DocumentationJs` &&
+    isMemberOf(node.memberof)
+  ) {
+    const babylon = require(`babylon`)
+    const traverse = require(`babel-traverse`).default
+
+    const absPath = node.parent.substring(0, node.parent.search(`absPath`) - 1)
+    const code = fs.readFileSync(absPath, `utf-8`)
+
+    // Not sure if all opts are needed or relevant.
+    const babylonOpts = {
+      sourceType: `module`,
+      allowImportExportEverywhere: true,
+      plugins: [
+        `jsx`,
+        `doExpressions`,
+        `objectRestSpread`,
+        `decorators`,
+        `classProperties`,
+        `exportExtensions`,
+        `asyncGenerators`,
+        `functionBind`,
+        `functionSent`,
+        `dynamicImport`,
+        `flow`,
+      ],
+      retainLines: true, // @see https://babeljs.io/docs/usage/api/#options
+    }
+
+    const ast = babylon.parse(code, babylonOpts)
+    traverse(ast, {
+      // Not entirely sure if this is the right option to be using.
+      AssignmentExpression: function AssignmentExpression(astPath) {
+        if (
+          astPath.node.left.property.type === `Identifier` &&
+          astPath.node.left.property.name === `onPostBuild`
+        ) {
+          console.log(astPath.node.left.property.loc)
+        }
+        return null
+      },
+    })
   }
 }
 
